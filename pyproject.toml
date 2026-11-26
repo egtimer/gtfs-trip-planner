@@ -1,0 +1,26 @@
+[project]
+name = "gtfs-trip-planner"
+version = "0.1.0"
+description = "Plan the earliest-arriving public-transport journey from real GTFS timetables through tools; verified exactly against a Connection Scan router."
+requires-python = ">=3.11"
+license = "MIT"
+tags = ["tool-use", "agentic", "multi-turn", "planning", "v1"]
+dependencies = [
+    "verifiers>=0.4.2.dev47",
+    "pandas>=2.2",
+    "pyarrow>=16",
+    "huggingface_hub>=0.24",
+]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["gtfs_trip_planner"]
+
+[tool.ruff]
+line-length = 120
