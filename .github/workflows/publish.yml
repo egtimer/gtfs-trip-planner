@@ -12,7 +12,7 @@ jobs:
       - name: Test
         run: |
           uv venv
-          uv pip install -e . pytest
+          uv pip install --prerelease=allow -e . pytest
           uv run python -m pytest -q tests -o pythonpath=tests
       - name: Push to the Environments Hub
         env:

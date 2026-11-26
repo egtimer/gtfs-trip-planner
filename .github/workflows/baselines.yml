@@ -1,0 +1,66 @@
+name: Model baselines
+
+on:
+  workflow_dispatch:
+    inputs:
+      models:
+        description: "Model ids on Prime Inference, separated by spaces"
+        required: true
+        default: "qwen/qwen3-30b-a3b-instruct-2507"
+      difficulty:
+        description: "standard or hard"
+        required: true
+        default: "hard"
+      tasks_per_region:
+        description: "Tasks per eval region (3 regions)"
+        required: true
+        default: "10"
+      rollouts:
+        description: "Rollouts per task"
+        required: true
+        default: "1"
+      list_models_only:
+        description: "Only list the models available on Prime Inference"
+        type: boolean
+        default: false
+
+jobs:
+  baselines:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      PRIME_API_KEY: ${{ secrets.PRIME_API_KEY }}
+      PRIME_DISABLE_VERSION_CHECK: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: List models on Prime Inference
+        if: ${{ inputs.list_models_only }}
+        run: uvx prime --plain inference models
+      - name: Install
+        if: ${{ !inputs.list_models_only }}
+        run: |
+          uv venv
+          uv pip install --prerelease=allow -e .
+      - name: Run
+        if: ${{ !inputs.list_models_only }}
+        run: |
+          for model in ${{ inputs.models }}; do
+            uv run vf-run gtfs-trip-planner -m "$model" \
+              --env.agent.harness.id null \
+              --env.taskset.difficulty ${{ inputs.difficulty }} \
+              --env.taskset.tasks-per-region ${{ inputs.tasks_per_region }} \
+              -r ${{ inputs.rollouts }} -c 8 -o outputs || echo "run failed for $model"
+          done
+      - name: Summary
+        if: ${{ !inputs.list_models_only }}
+        run: |
+          uv run python scripts/summarize_run.py outputs/* | tee summary.txt
+          { echo '```'; cat summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !inputs.list_models_only }}
+        with:
+          name: baselines-${{ inputs.difficulty }}
+          path: |
+            outputs/
+            summary.txt
