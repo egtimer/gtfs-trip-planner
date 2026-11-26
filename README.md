@@ -70,4 +70,11 @@ Configuration (`--taskset.*`): `split` (`eval` by default), `tasks_per_region` (
 | at most 2 legs, with walking | 62% |
 | at most 3 legs, no walking | 82% |
 
-Model baselines: not run yet.
+Model baselines (eval split, `--env.taskset.tasks-per-region 10`, 20 tasks, 1 rollout each, `null` harness so the model only has the transit tools):
+
+| Model | Reward (± s.e.) | Valid itinerary | Reward on 2 / 3 / 4-leg optima | Mean timetable lookups |
+| --- | --- | --- | --- | --- |
+| claude-haiku-5-5 | 0.80 ± 0.09 | 0.95 | 1.00 / 0.70 / 0.50 | 27.3 |
+| claude-sonnet-5-5 | 0.95 ± 0.05 | 1.00 | 1.00 / 1.00 / 0.50 | 16.8 |
+
+Every miss was a valid journey that arrived 2 to 26 minutes late, except one invalid Haiku itinerary. Reward falls as the optimum needs more legs, so harder settings (larger networks, longer trips, more required changes) are the next step.
