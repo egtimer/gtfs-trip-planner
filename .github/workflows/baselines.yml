@@ -48,6 +48,8 @@ jobs:
           for model in ${{ inputs.models }}; do
             uv run vf-run gtfs-trip-planner -m "$model" \
               --env.agent.harness.id null \
+              --env.agent.runtime.type subprocess \
+              --env.agent.max-turns 60 \
               --env.taskset.difficulty ${{ inputs.difficulty }} \
               --env.taskset.tasks-per-region ${{ inputs.tasks_per_region }} \
               -r ${{ inputs.rollouts }} -c 8 -o outputs || echo "run failed for $model"
