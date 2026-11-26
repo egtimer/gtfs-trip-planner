@@ -142,8 +142,6 @@ class Network:
             f.sort(key=lambda x: (x[1], x[0]))
         self._walk = {(i, j): w for i, fp in enumerate(self.footpaths) for j, w in fp}
 
-    # ----------------------------------------------------------------- routing
-
     def earliest_arrival(self, origin: str, dest: str, depart: int) -> tuple[int, list[Leg]] | None:
         """Connection Scan with change and walking rules; returns (arrival, legs) or None."""
         o, d = self.index[origin], self.index[dest]
@@ -205,8 +203,6 @@ class Network:
                     break
         return best
 
-    # ----------------------------------------------------------------- verifying
-
     def check(self, origin: str, dest: str, depart: int, legs: list[Leg]) -> Check:
         if not legs:
             return Check(False, None, "no legs")
@@ -244,8 +240,6 @@ class Network:
         if prev_stop != self.index[dest]:
             return Check(False, None, "last leg must alight at the destination")
         return Check(True, prev_arr, "ok")
-
-    # ----------------------------------------------------------------- tool views
 
     def search(self, query: str, limit: int = 10) -> list[int]:
         q = query.strip().lower()

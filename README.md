@@ -2,7 +2,7 @@
 
 A multi-turn, tool-using RL environment for [verifiers](https://github.com/PrimeIntellect-ai/verifiers): plan the public-transport journey that **arrives earliest**, using only timetable tools over real GTFS data.
 
-The reward is exact and cannot be talked into: the submitted legs are replayed against the timetable and compared with the optimum from a Connection Scan router.
+The submitted legs are checked against the timetable and compared with the optimum from a Connection Scan router, so the reward does not depend on what the model writes.
 
 ### Overview
 - **Environment ID**: `gtfs-trip-planner`
