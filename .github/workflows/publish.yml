@@ -1,0 +1,21 @@
+name: Publish to Environments Hub
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Test
+        run: |
+          uv venv
+          uv pip install -e . pytest
+          uv run python -m pytest -q tests -o pythonpath=tests
+      - name: Push to the Environments Hub
+        env:
+          PRIME_API_KEY: ${{ secrets.PRIME_API_KEY }}
+          PRIME_DISABLE_VERSION_CHECK: "1"
+        run: uvx prime --plain env push --path . --visibility PUBLIC
