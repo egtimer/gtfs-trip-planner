@@ -9,7 +9,7 @@ from reference_router import reference_earliest_arrival
 
 from gtfs_trip_planner.network import CHANGE_S, Leg, Network, walk_seconds
 from gtfs_trip_planner.servers.transit import TransitState, TransitToolset, TransitToolsetConfig
-from gtfs_trip_planner.taskset import TripPlannerConfig, TripPlannerTaskset, _network
+from gtfs_trip_planner.taskset import TripPlannerConfig, TripPlannerTaskset, _network, generate
 
 
 @pytest.fixture(scope="module")
@@ -178,7 +178,11 @@ def test_tools_show_timetable_without_revealing_the_answer(tasks):
     assert tools.submit_itinerary([]) == "An itinerary was already submitted."
 
 
-def test_generation_is_deterministic():
-    a = TripPlannerTaskset(TripPlannerConfig(split="eval", tasks_per_region=3, seed=7)).load()
-    b = TripPlannerTaskset(TripPlannerConfig(split="eval", tasks_per_region=3, seed=7)).load()
-    assert [x.data.model_dump() for x in a] == [x.data.model_dump() for x in b]
+def test_generation_is_deterministic_and_cached():
+    # Generated directly (not through the task-list cache) twice, then compared with the cache.
+    net = _network("tromso", "2026-04-15")
+    a = list(generate("tromso", net, 3, 7, "2026-04-15"))
+    b = list(generate("tromso", net, 3, 7, "2026-04-15"))
+    assert [x.model_dump() for x in a] == [x.model_dump() for x in b]
+    cached = TripPlannerTaskset(TripPlannerConfig(split="eval", tasks_per_region=3, seed=7)).load()
+    assert [x.data.model_dump() for x in cached if x.data.region == "tromso"] == [x.model_dump() for x in a]

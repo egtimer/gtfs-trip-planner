@@ -62,7 +62,7 @@ uv run vf-validate gtfs-trip-planner --runtime.type subprocess --taskset.tasks-p
 uv run vf-run gtfs-trip-planner -n 5 -r 3 -m <model>
 ```
 
-Configuration (`--taskset.*`): `split` (`eval` by default), `difficulty` (`standard` or `hard`), `tasks_per_region` (50), `seed` (0). The first load downloads the pinned snapshot (~75 MB) and caches one compact network per region in `~/.cache/gtfs_trip_planner` (override with `GTFS_TRIP_PLANNER_CACHE`).
+Configuration (`--taskset.*`): `split` (`eval` by default), `difficulty` (`standard` or `hard`), `tasks_per_region` (default 200 per train region, so 1,000 train tasks, and 50 per eval region, so 150 eval tasks), `seed` (0). Generated task lists are cached next to the networks. The first load downloads the pinned snapshot (~75 MB) and caches one compact network per region in `~/.cache/gtfs_trip_planner` (override with `GTFS_TRIP_PLANNER_CACHE`).
 
 ### How it is checked
 - `tests/test_env.py`: the gold journey scores 1 on every task; no submission, a made-up trip, a reversed leg, stopping short, skipping a leg, a too-tight change and walking too far all score 0; a valid but later journey is marked valid and scores 0; the tools do not leak the answer; generation is deterministic.

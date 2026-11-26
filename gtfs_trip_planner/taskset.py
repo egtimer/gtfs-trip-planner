@@ -11,13 +11,15 @@ whose optimum needs at least three legs. Train and eval regions share no stops o
 the eval split measures planning on unseen networks, not memorised timetables.
 """
 
+import gzip
+import json
 import random
 from collections.abc import Iterator
 from typing import Literal
 
 import verifiers.v1 as vf
 
-from gtfs_trip_planner.build import REGIONS, SERVICE_DATE, build_networks, network_path
+from gtfs_trip_planner.build import REGIONS, SERVICE_DATE, build_networks, cache_dir, network_path
 from gtfs_trip_planner.network import (
     CHANGE_S,
     WALK_RADIUS_M,
@@ -29,6 +31,9 @@ from gtfs_trip_planner.network import (
 from gtfs_trip_planner.servers.transit import TransitState, TransitToolset, TransitToolsetConfig
 
 MIN_STOP_DEPARTURES = 20
+GENERATOR_VERSION = 2
+"""Bump when generation changes, so cached task lists are rebuilt."""
+DEFAULT_TASKS_PER_REGION = {"train": 200, "eval": 50}
 MAX_COUNTED_LEGS = 8
 
 # difficulty -> (shortest optimal trip, longest optimal trip, fewest legs that reach the optimum)
@@ -207,20 +212,30 @@ class TripPlannerConfig(vf.TasksetConfig):
     difficulty: Literal["standard", "hard"] = "standard"
     """standard: optimal trips of 20-150 min that need at least 2 legs. hard: 30-180 min and
     no journey with fewer than 3 legs reaches the optimum."""
-    tasks_per_region: int = 50
+    tasks_per_region: int | None = None
+    """Default: 200 per train region (1,000 train tasks) and 50 per eval region (150 eval tasks)."""
     seed: int = 0
     task: TripTaskConfig = TripTaskConfig()
 
 
 class TripPlannerTaskset(vf.Taskset[TripTask, TripPlannerConfig]):
     def load(self) -> list[TripTask]:
-        regions = [r for r, spec in REGIONS.items() if spec["split"] == self.config.split]
+        c = self.config
+        per_region = c.tasks_per_region or DEFAULT_TASKS_PER_REGION[c.split]
+        regions = [r for r, spec in REGIONS.items() if spec["split"] == c.split]
         paths = build_networks(regions, SERVICE_DATE)
-        tasks = []
-        for region in regions:
-            net = load_network(str(paths[region]))
-            for data in generate(
-                region, net, self.config.tasks_per_region, self.config.seed, SERVICE_DATE, self.config.difficulty
-            ):
-                tasks.append(TripTask(data, self.config.task))
-        return tasks
+        # Generation is deterministic but slow on large networks, so the task list is cached.
+        cached = cache_dir() / f"tasks_g{GENERATOR_VERSION}_{c.split}_{c.difficulty}_{per_region}_{c.seed}.json.gz"
+        if cached.exists():
+            with gzip.open(cached, "rt", encoding="utf-8") as f:
+                rows = [TripData(**row) for row in json.load(f)]
+        else:
+            rows = []
+            for region in regions:
+                net = load_network(str(paths[region]))
+                rows += generate(region, net, per_region, c.seed, SERVICE_DATE, c.difficulty)
+            tmp = cached.with_name(cached.name + ".part")
+            with gzip.open(tmp, "wt", encoding="utf-8") as f:
+                json.dump([row.model_dump() for row in rows], f)
+            tmp.rename(cached)
+        return [TripTask(row, c.task) for row in rows]
