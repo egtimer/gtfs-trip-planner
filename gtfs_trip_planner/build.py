@@ -25,6 +25,7 @@ REGIONS: dict[str, dict] = {
     "ostfold": {"name": "Ostfold kollektivtrafikk", "agencies": ["OST:Authority:1"], "split": "train"},
     "trondheim": {"name": "AtB (Trondheim and Trondelag)", "agencies": ["ATB:Authority:2"], "split": "eval"},
     "tromso": {"name": "Troms fylkestrafikk", "agencies": ["TRO:Authority:1"], "split": "eval"},
+    "oslo": {"name": "Ruter (Oslo and Akershus)", "agencies": ["RUT:Authority:RUT"], "split": "eval"},
 }
 
 

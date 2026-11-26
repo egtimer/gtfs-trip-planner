@@ -189,6 +189,41 @@ class Network:
         legs.reverse()
         return arrived[d], legs
 
+    def best_within_legs(self, origin: str, dest: str, depart: int, max_legs: int, walking: bool = True) -> int | None:
+        """Earliest arrival using at most `max_legs` legs (round-based, RAPTOR-like over
+        departures); with `walking=False`, changes only happen at the same stop."""
+        o, d = self.index[origin], self.index[dest]
+        ready = {o: depart}
+        marked = {o: depart}
+        best = INF
+        for _round in range(max_legs):
+            nxt: dict[int, int] = {}
+            for u, r in marked.items():
+                for dep, tid, k in self.departures[u]:
+                    if dep < r:
+                        continue
+                    if dep >= best:
+                        break
+                    for v, arr, _, _, drop in self.trips[tid][2][k + 1 :]:
+                        if arr >= best:
+                            break
+                        if not drop:
+                            continue
+                        if v == d:
+                            best = arr
+                            break
+                        cands = [(v, arr + CHANGE_S)]
+                        if walking:
+                            cands += [(w, arr + ws) for w, ws in self.footpaths[v]]
+                        for w, t in cands:
+                            if t < nxt.get(w, INF) and t < ready.get(w, INF):
+                                nxt[w] = t
+            marked = nxt
+            ready.update(nxt)
+            if not marked:
+                break
+        return None if best >= INF else best
+
     def best_direct(self, origin: str, dest: str, depart: int) -> int | None:
         """Earliest arrival using a single trip (no change)."""
         o, d = self.index[origin], self.index[dest]

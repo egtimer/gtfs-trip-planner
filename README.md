@@ -18,7 +18,14 @@ Rules, identical in the prompt, the router and the verifier:
 - or walk once between legs to a stop within 400 m (walking time = 60 s + distance at 1.2 m/s);
 - boarding needs a pickup and alighting a drop-off at that stop; no walking at the start or end.
 
-Tasks are kept only if the optimal journey takes 20 to 150 minutes and **no single trip reaches the optimum**, so every task needs at least one change.
+Two difficulties (`--taskset.difficulty`):
+
+| Difficulty | Optimal trip | Kept only if |
+| --- | --- | --- |
+| `standard` (default) | 20 to 150 min | **no single trip reaches the optimum**, so every task needs at least one change |
+| `hard` | 30 to 180 min | **no journey with one or two legs reaches the optimum**, so every task needs at least two changes |
+
+Each task stores `min_legs`, the fewest legs of any journey that reaches the optimum, from a leg-bounded search.
 
 ### Splits
 Regions are whole operators that share no stops or trips, so the eval split measures planning on unseen networks rather than memorised timetables.
@@ -26,7 +33,7 @@ Regions are whole operators that share no stops or trips, so the eval split meas
 | Split | Regions |
 | --- | --- |
 | `train` | Skyss (Bergen), Kolumbus (Stavanger), AKT (Kristiansand), Brakar (Drammen), Ostfold |
-| `eval` | AtB (Trondheim), Troms fylkestrafikk (Tromso) |
+| `eval` | AtB (Trondheim), Troms fylkestrafikk (Tromso), Ruter (Oslo, 3,725 stops and 18,594 trips on the service day) |
 
 ### Tools
 | Tool | What it returns |
@@ -55,26 +62,28 @@ uv run vf-validate gtfs-trip-planner --runtime.type subprocess --taskset.tasks-p
 uv run vf-run gtfs-trip-planner -n 5 -r 3 -m <model>
 ```
 
-Configuration (`--taskset.*`): `split` (`eval` by default), `tasks_per_region` (50), `seed` (0). The first load downloads the pinned snapshot (~75 MB) and caches one compact network per region in `~/.cache/gtfs_trip_planner` (override with `GTFS_TRIP_PLANNER_CACHE`).
+Configuration (`--taskset.*`): `split` (`eval` by default), `difficulty` (`standard` or `hard`), `tasks_per_region` (50), `seed` (0). The first load downloads the pinned snapshot (~75 MB) and caches one compact network per region in `~/.cache/gtfs_trip_planner` (override with `GTFS_TRIP_PLANNER_CACHE`).
 
 ### How it is checked
 - `tests/test_env.py`: the gold journey scores 1 on every task; no submission, a made-up trip, a reversed leg, stopping short, skipping a leg, a too-tight change and walking too far all score 0; a valid but later journey is marked valid and scores 0; the tools do not leak the answer; generation is deterministic.
 - The Connection Scan router is cross-checked against an independent label-setting search (`tests/reference_router.py`): 0 mismatches on 180 random queries across three regions.
 - `uv run vf-validate`: gold 10/10 valid, untouched 10/10 scores 0.
-- `scripts/heuristic_baselines.py` measures how often simple strategies already reach the optimum (eval split, 100 tasks):
+- A leg-bounded search (`Network.best_within_legs`) gives the same optimum as the router on every task when its leg limit is high, and sets `min_legs`.
+- `scripts/heuristic_baselines.py` measures how often simple strategies already reach the optimum (eval split, 50 tasks per region, 150 tasks per difficulty):
 
-| Strategy | Reaches the optimum |
-| --- | --- |
-| direct trip only | 0% (by construction) |
-| at most 2 legs, no walking | 53% |
-| at most 2 legs, with walking | 62% |
-| at most 3 legs, no walking | 82% |
+| Strategy | `standard` | `hard` |
+| --- | --- | --- |
+| direct trip only | 0% (by construction) | 0% |
+| at most 2 legs, no walking | 36.7% | 0% (by construction) |
+| at most 2 legs, with walking | 44.7% | 0% (by construction) |
+| at most 3 legs, no walking | 60.0% | 38.7% |
+| at most 3 legs, with walking | 76.7% | 69.3% |
 
-Model baselines (eval split, `--env.taskset.tasks-per-region 10`, 20 tasks, 1 rollout each, `null` harness so the model only has the transit tools):
+Model baselines from v0.1 (eval split before Oslo was added: Trondheim and Tromso, `--env.taskset.tasks-per-region 10`, 20 tasks, 1 rollout each, `null` harness so the model only has the transit tools):
 
 | Model | Reward (± s.e.) | Valid itinerary | Reward on 2 / 3 / 4-leg optima | Mean timetable lookups |
 | --- | --- | --- | --- | --- |
 | claude-haiku-5-5 | 0.80 ± 0.09 | 0.95 | 1.00 / 0.70 / 0.50 | 27.3 |
 | claude-sonnet-5-5 | 0.95 ± 0.05 | 1.00 | 1.00 / 1.00 / 0.50 | 16.8 |
 
-Every miss was a valid journey that arrived 2 to 26 minutes late, except one invalid Haiku itinerary. Reward falls as the optimum needs more legs, so harder settings (larger networks, longer trips, more required changes) are the next step.
+Every miss was a valid journey that arrived 2 to 26 minutes late, except one invalid Haiku itinerary. Reward falls as the optimum needs more legs, which is why v0.2 adds the Oslo network and the `hard` difficulty.

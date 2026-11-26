@@ -33,10 +33,11 @@ def gold(task):
 
 
 def test_tasks_need_a_change_and_have_a_valid_gold(tasks):
-    assert len(tasks) == 20
+    assert len(tasks) == 30
     for task in tasks:
         assert asyncio.run(task.validate(None))
         assert task.data.reference_legs >= 2
+        assert task.data.min_legs >= 2
         direct = task.data.best_direct_arrival
         assert direct is None or direct > task.data.optimal_arrival
         assert score(task, gold(task)[1]) == (1.0, 1.0)
@@ -47,6 +48,29 @@ def test_router_matches_independent_search(tasks):
         d = task.data
         net = _network(d.region, d.service_date)
         assert reference_earliest_arrival(net, d.origin_id, d.destination_id, d.depart) == d.optimal_arrival
+
+
+def test_leg_bounded_search_matches_router(tasks):
+    for task in tasks[::4]:
+        d = task.data
+        net = _network(d.region, d.service_date)
+        assert net.best_within_legs(d.origin_id, d.destination_id, d.depart, 12) == d.optimal_arrival
+        fewer = net.best_within_legs(d.origin_id, d.destination_id, d.depart, d.min_legs - 1)
+        assert fewer is None or fewer > d.optimal_arrival
+        assert net.best_within_legs(d.origin_id, d.destination_id, d.depart, d.min_legs) == d.optimal_arrival
+
+
+def test_hard_tasks_need_three_legs():
+    hard = TripPlannerTaskset(TripPlannerConfig(split="eval", difficulty="hard", tasks_per_region=3)).load()
+    assert len(hard) == 9
+    for task in hard:
+        d = task.data
+        assert d.difficulty == "hard" and d.min_legs >= 3
+        assert 30 * 60 <= d.optimal_arrival - d.depart <= 180 * 60
+        best2 = _network(d.region, d.service_date).best_within_legs(d.origin_id, d.destination_id, d.depart, 2)
+        assert best2 is None or best2 > d.optimal_arrival
+        assert asyncio.run(task.validate(None))
+        assert score(task, gold(task)[1]) == (1.0, 1.0)
 
 
 def test_no_submission_scores_zero(tasks):
@@ -131,6 +155,11 @@ def test_change_and_walking_rules():
     arrival, legs = net.earliest_arrival("A", "C", t8)
     assert arrival == t8 + 22 * 60
     assert [x.trip_id for x in legs] == ["T1", "T4"]
+    # The leg-bounded search agrees: one leg cannot reach C, two legs reach it at 08:22,
+    # and without walking the best two-leg journey is the same-stop change to T3.
+    assert net.best_within_legs("A", "C", t8, 1) is None
+    assert net.best_within_legs("A", "C", t8, 2) == t8 + 22 * 60
+    assert net.best_within_legs("A", "C", t8, 2, walking=False) == t8 + 25 * 60
 
 
 def test_tools_show_timetable_without_revealing_the_answer(tasks):

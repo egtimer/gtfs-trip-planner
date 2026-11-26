@@ -6,8 +6,9 @@ real Norwegian network (Entur national GTFS). The agent only sees the timetable 
 (trip, boarding stop, alighting stop). The task re-checks the legs against the timetable and
 rewards 1.0 only when the itinerary is valid AND arrives as early as the exact optimum
 computed by a Connection Scan router. Tasks are kept only when no single trip reaches the
-optimum, so every task needs at least one change. Train and eval regions share no stops or
-trips, so the eval split measures planning on unseen networks, not memorised timetables.
+optimum, so every task needs at least one change; the `hard` difficulty keeps only journeys
+whose optimum needs at least three legs. Train and eval regions share no stops or trips, so
+the eval split measures planning on unseen networks, not memorised timetables.
 """
 
 import random
@@ -27,9 +28,14 @@ from gtfs_trip_planner.network import (
 )
 from gtfs_trip_planner.servers.transit import TransitState, TransitToolset, TransitToolsetConfig
 
-MIN_TRAVEL_S = 20 * 60
-MAX_TRAVEL_S = 150 * 60
 MIN_STOP_DEPARTURES = 20
+MAX_COUNTED_LEGS = 8
+
+# difficulty -> (shortest optimal trip, longest optimal trip, fewest legs that reach the optimum)
+DIFFICULTIES: dict[str, tuple[int, int, int]] = {
+    "standard": (20 * 60, 150 * 60, 2),
+    "hard": (30 * 60, 180 * 60, 3),
+}
 
 INSTRUCTIONS = f"""You are a public-transport journey planner. Use the transit tools to read the timetable and find the itinerary that ARRIVES EARLIEST at the destination.
 
@@ -57,6 +63,9 @@ class TripData(vf.TaskData):
     """Earliest arrival with a single trip, None if no direct trip exists."""
     reference_legs: int
     """Number of legs in the router's optimal journey."""
+    min_legs: int = 0
+    """Fewest legs of any journey that reaches the optimum (counted up to 8; 0 if not computed)."""
+    difficulty: str = "standard"
 
 
 class TripTaskConfig(vf.TaskConfig):
@@ -136,10 +145,24 @@ def make_prompt(net: Network, o: int, dest: int, depart: int, date: str) -> str:
     )
 
 
-def generate(region: str, net: Network, count: int, seed: int, date: str) -> Iterator[TripData]:
+def min_legs(net: Network, origin: str, dest: str, depart: int, optimum: int, start: int = 1) -> int:
+    """Fewest legs that still reach `optimum`, trying `start`, `start + 1`, ... up to MAX_COUNTED_LEGS."""
+    for k in range(start, MAX_COUNTED_LEGS + 1):
+        best = net.best_within_legs(origin, dest, depart, k)
+        if best is not None and best <= optimum:
+            return k
+    return MAX_COUNTED_LEGS + 1
+
+
+def generate(
+    region: str, net: Network, count: int, seed: int, date: str, difficulty: str = "standard"
+) -> Iterator[TripData]:
     """Deterministic task stream for one region: random stop pairs and departure times, kept
-    only when the optimum needs a change and the trip takes 20-150 minutes."""
-    rng = random.Random(f"{seed}:{region}")
+    only when the optimal trip length is in range and no journey with fewer legs than the
+    difficulty's minimum reaches the optimum (standard: 20-150 min, at least 2 legs; hard:
+    30-180 min, at least 3 legs)."""
+    min_s, max_s, need_legs = DIFFICULTIES[difficulty]
+    rng = random.Random(f"{seed}:{region}" if difficulty == "standard" else f"{seed}:{region}:{difficulty}")
     busy = [i for i, deps in enumerate(net.departures) if len(deps) >= MIN_STOP_DEPARTURES]
     made = 0
     for _ in range(count * 200):
@@ -151,13 +174,16 @@ def generate(region: str, net: Network, count: int, seed: int, date: str) -> Ite
         if result is None:
             continue
         arrival, legs = result
-        if not (MIN_TRAVEL_S <= arrival - depart <= MAX_TRAVEL_S) or len(legs) < 2:
+        if not (min_s <= arrival - depart <= max_s) or len(legs) < 2:
             continue
         direct = net.best_direct(net.stop_ids[o], net.stop_ids[dest], depart)
         if direct is not None and direct <= arrival:
             continue
+        fewest = min_legs(net, net.stop_ids[o], net.stop_ids[dest], depart, arrival, start=2)
+        if fewest < need_legs:
+            continue
         yield TripData(
-            id=f"{region}-{made:04d}",
+            id=f"{region}-{made:04d}" if difficulty == "standard" else f"{region}-{difficulty}-{made:04d}",
             name=f"{region}: {net.stop_names[o]} -> {net.stop_names[dest]} after {fmt_time(depart)}",
             prompt=make_prompt(net, o, dest, depart, date),
             region=region,
@@ -168,6 +194,8 @@ def generate(region: str, net: Network, count: int, seed: int, date: str) -> Ite
             optimal_arrival=arrival,
             best_direct_arrival=direct,
             reference_legs=len(legs),
+            min_legs=fewest,
+            difficulty=difficulty,
         )
         made += 1
 
@@ -175,7 +203,10 @@ def generate(region: str, net: Network, count: int, seed: int, date: str) -> Ite
 class TripPlannerConfig(vf.TasksetConfig):
     split: Literal["train", "eval"] = "eval"
     """Train regions: Bergen, Stavanger, Kristiansand, Drammen, Ostfold. Eval regions
-    (held out, no shared stops or trips): Trondheim, Tromso."""
+    (held out, no shared stops or trips): Trondheim, Tromso, Oslo."""
+    difficulty: Literal["standard", "hard"] = "standard"
+    """standard: optimal trips of 20-150 min that need at least 2 legs. hard: 30-180 min and
+    no journey with fewer than 3 legs reaches the optimum."""
     tasks_per_region: int = 50
     seed: int = 0
     task: TripTaskConfig = TripTaskConfig()
@@ -188,6 +219,8 @@ class TripPlannerTaskset(vf.Taskset[TripTask, TripPlannerConfig]):
         tasks = []
         for region in regions:
             net = load_network(str(paths[region]))
-            for data in generate(region, net, self.config.tasks_per_region, self.config.seed, SERVICE_DATE):
+            for data in generate(
+                region, net, self.config.tasks_per_region, self.config.seed, SERVICE_DATE, self.config.difficulty
+            ):
                 tasks.append(TripTask(data, self.config.task))
         return tasks

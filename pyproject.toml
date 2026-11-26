@@ -1,6 +1,6 @@
 [project]
 name = "gtfs-trip-planner"
-version = "0.1.0"
+version = "0.2.0"
 description = "Plan the earliest-arriving public-transport journey from real GTFS timetables through tools; verified exactly against a Connection Scan router."
 requires-python = ">=3.11"
 license = "MIT"
