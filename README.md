@@ -87,3 +87,12 @@ Model baselines from v0.1 (eval split before Oslo was added: Trondheim and Troms
 | claude-sonnet-5-5 | 0.95 ± 0.05 | 1.00 | 1.00 / 1.00 / 0.50 | 16.8 |
 
 Every miss was a valid journey that arrived 2 to 26 minutes late, except one invalid Haiku itinerary. Reward falls as the optimum needs more legs, which is why v0.2 adds the Oslo network and the `hard` difficulty.
+
+Model baselines on v0.2 `hard` (eval split, 30 tasks per region, 90 tasks, 1 rollout each, `null` harness, at most 60 turns, models served by Prime Inference; `.github/workflows/baselines.yml`):
+
+| Model | Reward (± s.e.) | Valid itinerary | Reward when the optimum needs 3 / 4 / 5 legs (n = 60 / 22 / 8) |
+| --- | --- | --- | --- |
+| deepseek/deepseek-v4.1-flash-1017 | 0.58 ± 0.05 | 0.97 | 0.70 / 0.32 / 0.38 |
+| google/gemma-4-26b-a4b-it-flex | 0.00 | 0.00 | 0 / 0 / 0 |
+
+DeepSeek's misses are almost all valid journeys that arrive later than the optimum (median 15 minutes late), so the failures are planning failures rather than rule violations. Gemma submitted an itinerary in 62 of 90 tasks and hit the turn limit in the rest, but none of its itineraries was valid; this may be a tool-calling format problem rather than a planning one and has not been investigated, so treat that row as unverified. A smaller earlier run on the same split (10 tasks per region) gave qwen/qwen3.5-9b 0 of 30 and qwen/qwen3.6-35b-a3b 3 correct out of 14 completed tasks. With per-call cached input, a `hard` task cost about 2 US cents for these models.
